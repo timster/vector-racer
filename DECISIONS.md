@@ -69,3 +69,9 @@ Choices made where SPEC.md left an option open. Newest at the bottom.
 - Limits: messages over 1 KB close the socket (1009); more than 50 messages a second close it (1008); 30 run starts per minute per racer.
 - **No undo** (owner's call: "there is no undo in racing"). Restart begins a new run.
 - Speed in the HUD is one positive number, the length of the velocity vector, not the signed `vx, vy`.
+
+## Hosting
+
+- **Railway** (owner's call over the spec's Fly.io default): one project with the game service and Railway Postgres. Built from a `Dockerfile` (`node:26-alpine`, two stages; the runtime installs only the server's external dependencies) and configured by `railway.json` (Dockerfile builder, `/api/tracks` health check, restart on failure). The same image runs on any Docker host.
+- Production variables: `DATABASE_URL` (`${{Postgres.DATABASE_URL}}`, over Railway's private network), `PUBLIC_ORIGIN` (the exact site origin; used for the same-origin checks on posts and WebSocket upgrades), `TRUST_PROXY=true` (real client IPs for rate limits). `PORT` comes from Railway; `NODE_ENV=production` from the image.
+- GitHub: `timster/vector-racer`.
