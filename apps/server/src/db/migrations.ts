@@ -44,26 +44,22 @@ export const MIGRATIONS: readonly { name: string; sql: string }[] = [
         score int NOT NULL,
         move_hash bytea NOT NULL,
         source text NOT NULL CHECK (source IN ('replay', 'live')),
-        -- Moderation: hidden runs stay stored but never appear on the leaderboard.
-        hidden boolean NOT NULL DEFAULT false,
         created_at timestamptz NOT NULL DEFAULT now()
       );
-      CREATE UNIQUE INDEX runs_unique_moves ON runs (player_id, track_id, move_hash);
-      CREATE INDEX runs_leaderboard ON runs (track_id, score, created_at) WHERE NOT hidden;
+      CREATE UNIQUE INDEX runs_unique_moves ON runs (player_id, track_id, source, move_hash);
+      CREATE INDEX runs_leaderboard ON runs (track_id, score, created_at);
 
-      CREATE TABLE run_timings (
-        run_id bigint PRIMARY KEY REFERENCES runs (id) ON DELETE CASCADE,
-        move_times_ms int[] NOT NULL,
-        session_id text NOT NULL
-      );
-
-      CREATE TABLE flags (
-        id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        run_id bigint NOT NULL REFERENCES runs (id) ON DELETE CASCADE,
-        kind text NOT NULL,
-        detail jsonb NOT NULL DEFAULT '{}',
-        status text NOT NULL DEFAULT 'open',
-        created_at timestamptz NOT NULL DEFAULT now()
+      -- A live run in progress: at most one per racer. Stored so a run survives the browser closing,
+      -- the connection dropping and the server restarting. The state is rebuilt by replaying moves.
+      CREATE TABLE live_runs (
+        id text PRIMARY KEY,
+        player_id bigint NOT NULL UNIQUE REFERENCES players (id) ON DELETE CASCADE,
+        track_id bigint NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+        moves smallint[] NOT NULL DEFAULT '{}',
+        -- The single-use value the next move must echo back.
+        nonce text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
       );
     `,
   },

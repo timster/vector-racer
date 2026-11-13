@@ -132,6 +132,7 @@ export async function syncBuiltinTracks(
       if (mapChanged) {
         await withTransaction(db, async (tx) => {
           await tx.query('DELETE FROM runs WHERE track_id = $1', [stored.id]);
+          await tx.query('DELETE FROM live_runs WHERE track_id = $1', [stored.id]);
           await tx.query('UPDATE tracks SET grid = $2, max_turns = $3, par = $4, rules_version = $5 WHERE id = $1', [
             stored.id,
             { rows },

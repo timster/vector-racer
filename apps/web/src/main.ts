@@ -1,6 +1,7 @@
 import type { MoveIndex } from '@vector-racer/sim';
 import { BUILTIN_TRACKS, parseTrack, type ParsedTrack } from '@vector-racer/tracks';
-import { api, ApiError, type Player } from './api';
+import { api, type Player } from './api';
+import { LiveConnection, type Finished, type LiveEvent } from './live';
 import { Game, type Candidate } from './game';
 import { loadSprites, Renderer, type Ghost, type Motion } from './render';
 
@@ -54,6 +55,15 @@ let player: Player | null = null;
 
 let game: Game;
 let hover: Candidate | undefined;
+
+// Live run state for the current game. 'none': no server run yet (one starts on the first move);
+// 'active': the server is following along; 'lost': this game can no longer be verified.
+let live: LiveConnection | undefined;
+let liveState: 'none' | 'active' | 'lost' = 'none';
+let liveNote = '';
+let liveResult: Finished | undefined;
+/** The first answer after page load decides whether to pick up an open run. */
+let awaitingFirstResume = true;
 let motion: Motion | undefined;
 let toastTimer: number | undefined;
 
@@ -69,6 +79,7 @@ function loadTrack(slug: string): void {
   select.value = track.slug;
   if (location.hash !== `#${track.slug}`) history.replaceState(null, '', `#${track.slug}`);
   game = new Game(track);
+  resetLive();
   renderer.setTrack(track.track);
   best = undefined;
   showBest = false;
@@ -117,7 +128,14 @@ function reset(): void {
 
 function restart(): void {
   game = new Game(game.track);
+  resetLive();
   reset();
+}
+
+function resetLive(): void {
+  liveState = 'none';
+  liveNote = '';
+  liveResult = undefined;
 }
 
 function play(move: MoveIndex): void {
@@ -127,19 +145,18 @@ function play(move: MoveIndex): void {
   const r = game.play(move);
   if (!r.ok) return;
   hover = undefined;
+  // The car moves at once; the server follows along and confirms each move.
+  if (live && liveState === 'none') {
+    live.start(game.track.slug, game.track.version, game.moves);
+    liveState = 'active';
+  } else if (live && liveState === 'active') {
+    live.move(move);
+  }
   animate({ x: from.x, y: from.y }, { x: r.state.x, y: r.state.y });
   if (r.crashed) showToast('Hit the wall: speed reset, +3 turns.', true);
   else if (r.state.nextCheckpoint > from.nextCheckpoint && !r.state.finished) {
     showToast(`Checkpoint ${r.state.nextCheckpoint - 1} of ${game.track.track.checkpointCount}`);
   }
-  update();
-}
-
-function undo(): void {
-  if (motion || !game.undo()) return;
-  stopWatching();
-  finishPanel.hidden = true;
-  showToast('');
   update();
 }
 
@@ -150,7 +167,7 @@ function animate(from: { x: number; y: number }, to: { x: number; y: number }): 
     motion = t < 1 ? { from, to, t: 1 - (1 - t) * (1 - t) } : undefined;
     draw();
     if (motion) requestAnimationFrame(frame);
-    else if (game.state.finished) void finish();
+    else if (game.state.finished) finish();
   };
   requestAnimationFrame(frame);
 }
@@ -159,10 +176,10 @@ function update(): void {
   const s = game.state;
   const cps = game.track.track.checkpointCount;
   $('stat-turn').textContent = String(s.turn);
-  $('stat-speed').textContent = `${s.vx}, ${s.vy}`;
+  // Speed as one positive number: cells per turn along the direction of travel.
+  $('stat-speed').textContent = String(Math.round(Math.hypot(s.vx, s.vy) * 10) / 10);
   $('stat-cp').textContent = `${Math.min(s.nextCheckpoint - 1, cps)} / ${cps}`;
   $('stat-par').textContent = String(par() ?? '–');
-  $<HTMLButtonElement>('btn-undo').disabled = game.moves.length === 0;
   for (const el of document.querySelectorAll<HTMLElement>('.dev-only')) el.hidden = !DEV_TOOLS;
   $('btn-best').setAttribute('aria-pressed', String(showBest));
   $('btn-watch').textContent = watch ? 'Stop' : 'Watch best';
@@ -241,16 +258,16 @@ function stopWatching(): void {
   watch = undefined;
 }
 
-// --- Finishing: every finished run is submitted for this browser's racer --------------------
+// --- Finishing and live verification -----------------------------------------------------
 
-async function finish(): Promise<void> {
+function finish(): void {
   const crashes = game.crashed.filter(Boolean).length;
   const p = par();
   $('finish-turns').textContent = String(game.state.turn);
   $('finish-detail').textContent =
     `${game.track.name} · ${crashes} wall ${crashes === 1 ? 'hit' : 'hits'}` + (p ? ` · par ${p}` : '');
   finishPanel.hidden = false;
-  await submitRun(game);
+  showVerification();
 }
 
 function setSubmitStatus(text: string, error = false): void {
@@ -259,29 +276,112 @@ function setSubmitStatus(text: string, error = false): void {
   el.classList.toggle('error', error);
 }
 
-async function submitRun(run: Game): Promise<void> {
-  if (!online || !player) {
-    setSubmitStatus('Offline: this run was not submitted.', true);
-    return;
-  }
-  setSubmitStatus('Submitting…');
-  try {
-    const res = await api.submitRun(run.track.slug, run.track.version, run.moves);
-    if (game !== run) return;
-    const rank = res.best ? `#${res.best.rank}` : 'unranked';
+/** What the finish panel says about the server's verdict on this run. */
+function showVerification(): void {
+  if (finishPanel.hidden) return;
+  if (liveResult) {
+    const rank = liveResult.best ? `#${liveResult.best.rank}` : 'unranked';
     setSubmitStatus(
-      res.isBest
-        ? `Verified ${res.score} turns: your best, ${rank} on the leaderboard.`
-        : `Verified ${res.score} turns. Your best is ${res.best?.score} (${rank}).`,
+      liveResult.isBest
+        ? `Verified ${liveResult.score} turns: your best, ${rank} on the leaderboard.`
+        : `Verified ${liveResult.score} turns. Your best is ${liveResult.best?.score} (${rank}).`,
     );
-    if (!boardPanel.hidden) void refreshBoard();
-  } catch (err) {
-    if (game !== run) return;
-    const e = err instanceof ApiError ? err : new ApiError(0, 'error', String(err));
-    if (e.code === 'duplicate_run') setSubmitStatus('Already on the board: you submitted this exact run before.');
-    else if (e.code === 'stale_track_version') {
-      setSubmitStatus('This track was updated. Reload to race the new version.', true);
-    } else setSubmitStatus(`Not submitted: ${e.message}`, true);
+  } else if (!live) setSubmitStatus('Offline: this run can’t be verified.', true);
+  else if (liveState === 'lost') setSubmitStatus(liveNote, true);
+  else setSubmitStatus(live.connected ? 'Verifying…' : 'Reconnecting to verify…');
+}
+
+function loseRun(note: string): void {
+  liveState = 'lost';
+  liveNote = note;
+  if (!game.state.finished) showToast(note, true);
+  showVerification();
+}
+
+function sameState(
+  a: { x: number; y: number; vx: number; vy: number; turn: number } | undefined,
+  b: typeof a,
+): boolean {
+  return !!a && !!b && a.x === b.x && a.y === b.y && a.vx === b.vx && a.vy === b.vy && a.turn === b.turn;
+}
+
+/** Shows a run the server has (after coming back): switch to its track and rebuild the trail. */
+function adoptRun(slug: string, version: number, moves: number[]): boolean {
+  const track = tracks.find((t) => t.slug === slug && t.version === version);
+  if (!track) return false;
+  if (game.track !== track) loadTrack(track.slug);
+  game = Game.fromMoves(track, moves);
+  liveState = 'active';
+  reset();
+  return true;
+}
+
+function onLive(event: LiveEvent): void {
+  switch (event.type) {
+    case 'connection':
+      if (!event.connected && liveState === 'active' && !game.state.finished)
+        showToast('Connection lost: reconnecting…');
+      showVerification();
+      return;
+
+    case 'run_started':
+      awaitingFirstResume = false;
+      return;
+
+    case 'run_resumed': {
+      const first = awaitingFirstResume;
+      awaitingFirstResume = false;
+      const sameTrack = event.track.slug === game.track.slug && event.track.version === game.track.version;
+      const local = game.moves;
+      const server = event.moves;
+      if (first || (local.length === 0 && liveState === 'none')) {
+        // Coming back to the page: carry on with the open run (if it got going).
+        if (server.length > 0 && adoptRun(event.track.slug, event.track.version, server)) {
+          showToast(`Picking up your ${game.track.name} run`);
+        }
+      } else if (sameTrack && liveState === 'active' && server.every((m, i) => m === local[i])) {
+        // Reconnected mid-run: send whatever the server missed.
+        live!.setQueue(local.slice(server.length));
+      } else if (sameTrack && local.every((m, i) => m === server[i])) {
+        // The server is ahead (e.g. moves from another tab): show its version.
+        adoptRun(event.track.slug, event.track.version, server);
+      } else if (liveState === 'active') {
+        loseRun('This run was replaced by one somewhere else, so it won’t count.');
+      }
+      return;
+    }
+
+    case 'no_run':
+      awaitingFirstResume = false;
+      if (liveState === 'active' && !liveResult) {
+        loseRun('The server no longer has this run, so it can’t be verified. Restart to race again.');
+      }
+      return;
+
+    case 'state':
+      // The server applies the same rules; if it ever disagrees, take its version.
+      if (!sameState(game.states[event.turn], event.state)) live!.resume();
+      return;
+
+    case 'finished':
+      liveResult = event;
+      liveState = 'none';
+      showVerification();
+      if (!boardPanel.hidden) void refreshBoard();
+      return;
+
+    case 'error':
+      if (event.code === 'bad_nonce') live!.resume();
+      else if (event.code === 'duplicate_run') {
+        liveState = 'lost';
+        liveNote = 'Already on the board: you finished this exact run before.';
+        showVerification();
+      } else if (event.code === 'stale_track_version')
+        loseRun('This track was updated. Reload to race the new version.');
+      else if (event.code === 'run_replaced') loseRun('You started a run in another tab, so this one won’t count.');
+      else if (liveState === 'active') loseRun(`This run can’t be verified: ${event.message}`);
+      else showToast(event.message, true);
+      return;
   }
 }
 
@@ -433,20 +533,11 @@ canvas.addEventListener('click', (e) => {
 
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;
-  if (e.target instanceof HTMLSelectElement || e.metaKey || e.altKey) {
-    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyZ') {
-      e.preventDefault();
-      undo();
-    }
-    return;
-  }
+  if (e.target instanceof HTMLSelectElement || e.metaKey || e.altKey) return;
   const move = KEY_TO_MOVE[e.code];
   if (move !== undefined && !e.ctrlKey) {
     e.preventDefault();
     play(move);
-  } else if (e.code === 'Backspace' || (e.ctrlKey && e.code === 'KeyZ')) {
-    e.preventDefault();
-    undo();
   } else if (e.ctrlKey) {
     return;
   } else if (e.code === 'KeyR') {
@@ -474,7 +565,6 @@ window.addEventListener('resize', () => {
 
 $('btn-best').addEventListener('click', () => void toggleBest());
 $('btn-watch').addEventListener('click', () => void toggleWatch());
-$('btn-undo').addEventListener('click', undo);
 $('btn-restart').addEventListener('click', restart);
 $('btn-board').addEventListener('click', () => toggleBoard());
 $('board-close').addEventListener('click', () => toggleBoard(false));
@@ -498,4 +588,9 @@ try {
 }
 for (const t of tracks) select.add(new Option(t.name, t.slug));
 loadTrack(location.hash.slice(1));
-if (!online) showToast('Server not reachable: playing offline, runs are not submitted');
+if (online) {
+  live = new LiveConnection(onLive);
+  live.connect();
+} else {
+  showToast('Server not reachable: playing offline, runs are not verified');
+}

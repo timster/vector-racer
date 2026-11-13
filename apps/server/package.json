@@ -13,6 +13,7 @@
     "@fastify/cookie": "^11.1.5",
     "@fastify/rate-limit": "^11.2.2",
     "@fastify/static": "^10.1.11",
+    "@fastify/websocket": "^11.3.7",
     "@vector-racer/sim": "*",
     "@vector-racer/tracks": "*",
     "fastify": "^5.12.8",
@@ -20,6 +21,8 @@
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",
-    "esbuild": "^0.28.2"
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
+    "ws": "^8.23.0"
   }
 }

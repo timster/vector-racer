@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
+import type { WebSocket } from 'ws';
 import { afterAll, expect, inject } from 'vitest';
 import { buildApp } from '../src/app';
 import { DEFAULT_RATE_LIMITS, type Config, type RateLimits } from '../src/config';
@@ -12,6 +13,8 @@ const GENEROUS: RateLimits = {
   playersPerHour: 100_000,
   runsPerMinutePerPlayer: 100_000,
   runsPerMinutePerIp: 100_000,
+  liveStartsPerMinute: 100_000,
+  liveMessagesPerSecond: 100_000,
 };
 
 /**
@@ -43,7 +46,7 @@ export async function testApp(rateLimits: Partial<RateLimits> = {}): Promise<{ a
     publicOrigin: undefined,
     trustProxy: false,
     staticDir: undefined,
-    logLevel: 'silent',
+    logLevel: process.env.TEST_LOG ?? 'silent',
     rateLimits: { ...DEFAULT_RATE_LIMITS, ...GENEROUS, ...rateLimits },
   };
   const app = await buildApp(config, db);
@@ -76,3 +79,68 @@ export const BEST = {
   dogleg: [5, 4, 8, 8, 8, 1, 2, 2],
   oval: [2, 5, 8, 4, 5, 4, 6, 6, 6, 3, 3, 1, 0, 0, 0, 3, 7, 8, 2, 2, 2, 2, 5, 5, 8],
 };
+
+type Message = { type: string; [key: string]: unknown };
+
+/** A test WebSocket client: send JSON, await the next message, see when it closes. */
+export class LiveClient {
+  private readonly queue: Message[] = [];
+  private readonly waiters: ((m: Message) => void)[] = [];
+  closed: Promise<{ code: number; reason: string }>;
+
+  constructor(readonly ws: WebSocket) {
+    ws.on('message', (data: Buffer) => {
+      const m = JSON.parse(data.toString()) as Message;
+      const waiter = this.waiters.shift();
+      if (waiter) waiter(m);
+      else this.queue.push(m);
+    });
+    this.closed = new Promise((resolve) =>
+      ws.on('close', (code: number, reason: Buffer) => resolve({ code, reason: reason.toString() })),
+    );
+  }
+
+  send(message: object): void {
+    this.ws.send(JSON.stringify(message));
+  }
+
+  next(): Promise<Message> {
+    const m = this.queue.shift();
+    return m ? Promise.resolve(m) : new Promise((resolve) => this.waiters.push(resolve));
+  }
+
+  async request(message: object): Promise<Message> {
+    this.send(message);
+    return this.next();
+  }
+
+  close(): void {
+    this.ws.terminate();
+  }
+}
+
+export async function connect(app: FastifyInstance, cookie?: string, headers: Record<string, string> = {}) {
+  // Listen from the moment the socket exists: the server may close it before it even opens.
+  let client!: LiveClient;
+  await app.injectWS(
+    '/ws',
+    { headers: { ...headers, ...(cookie ? { cookie } : {}) } },
+    {
+      onInit: (ws) => (client = new LiveClient(ws)),
+    },
+  );
+  return client;
+}
+
+/** Races a whole run over a live session and returns the server's last reply. */
+export async function liveRun(app: FastifyInstance, slug: string, moves: number[], cookie?: string) {
+  cookie ??= (await newPlayer(app)).cookie;
+  const live = await connect(app, cookie);
+  let reply = await live.request({ type: 'start_run', trackSlug: slug, trackVersion: 1 });
+  for (const move of moves) {
+    if (reply.type === 'error') break;
+    reply = await live.request({ type: 'move', move, nonce: reply.nonce });
+  }
+  live.close();
+  return reply;
+}

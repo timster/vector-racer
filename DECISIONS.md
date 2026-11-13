@@ -36,10 +36,11 @@ Choices made where SPEC.md left an option open. Newest at the bottom.
 ## Server (Phase 2)
 
 - **Anonymous racers, no login** (owner's call, replaces the spec's OAuth accounts). A browser's first visit creates a racer named `Racer-XXXX` and an `HttpOnly`, `SameSite=Strict` cookie (`vr_player`, 400 days) holding a random token; only the token's sha256 is stored. The name shows top right and can be changed any time; runs reference the racer, so a rename applies to all of their runs. Names are free-form and not unique (1–16 of letters, digits, spaces, `_`, `-`; trimmed, spaces collapsed). No way to move a racer to another browser (an account-key design was built and dropped as too much friction).
-- Every finished run is submitted automatically for the browser's racer. The leaderboard keeps each racer's best run, ties to the earlier run; the same move list from the same racer is a duplicate.
+- The leaderboard keeps each racer's best **live** run, ties to the earlier run; the same move list from the same racer and source is a duplicate.
 - **Other racers' runs stay a mystery** (owner's call): the leaderboard serves names and scores only, and the spec's `GET /runs/:id` (move lists for ghosts) is not exposed.
 - **Par is shown to everyone; the best line is dev-only** (owner's call). Best line and Watch best exist only when `import.meta.env.DEV` (Vite dev server). The solver is imported dynamically on first use, so production bundles contain neither it nor the golden cases (the tracks package exposes them as separate entry points, `@vector-racer/tracks/solve` and `/golden`). Hiding it is not security: the sim is public, so anyone could compute the line.
-- Schema: `players` (`display_name`, `token_hash`) instead of the spec's `users`; `runs` gains `player_id`, `rules_version` and a `hidden` flag for moderation (in place of per-user `standing`).
+- Schema: `players` (`display_name`, `token_hash`) instead of the spec's `users`; `runs` gains `player_id` and `rules_version`.
+- **No moderation** (owner's call: "this is not that serious"). No user standing, hidden runs, `flags` table or review tooling; the spec's Phase 4 flagging and tiered leaderboards are dropped.
 - **One process** serves `/api`, and in production the built client (`STATIC_DIR`). Same origin, so no CORS. Vite proxies `/api` in development and keeps the browser's `Host` so the same-origin check matches.
 - **Request hardening**: 16 KB body limit; Ajv with no type coercion and unknown fields stripped (a client `score` never reaches the handler); requests from another site's pages (foreign `Origin`) get 403; parameterized queries only.
 - **Rate limits** (`DEFAULT_RATE_LIMITS`): 300 req/min per IP overall; 20 new racers/hour per IP; run submissions 20/min per racer and 60/min per IP. The rate-limit plugin runs only one limiter per request, so route limits use `createRateLimit` with a per-limit key prefix.
@@ -54,3 +55,17 @@ Choices made where SPEC.md left an option open. Newest at the bottom.
 - Five built-ins, in the owner's order: Dogleg, Oval, Hairpin (was "Hairpin Circuit", slug `circuit` → `hairpin`; renamed before any real runs existed), Figure8 (two square loops crossing at a plus-shaped intersection, square corners throughout; 4 checkpoints, one on each half of both crossing roads' loops; replaced an earlier curved version), Street (one route around city blocks; streets carry on past corners as dead-end runoffs, several running off the edge of the map; earlier drafts were a full street grid with route choices, then short runoffs only).
 - Curbs are not drawn along the map's outer edge, so a road reaching it looks like it continues off the map. The sim still treats leaving the grid as hitting a wall.
 - Move dots for a finishing move are drawn where the path first crosses the line, not at the (possibly off-board) target.
+
+## Live runs (Phase 3)
+
+- A WebSocket at `/ws` on the same server. The racer comes from the `vr_player` cookie on the upgrade request (no `hello` message); without a racer the upgrade is refused with 401, from another site's page with 403.
+- **One live run per racer**, started by the racer's first move on a track (not when a track is merely viewed); starting one ends any other, and other tabs are told.
+- **Each move echoes the single-use nonce** from the server's previous reply (16 random bytes, compared in constant time), so moves arrive strictly in order and can't be replayed or sent ahead.
+- **No think-time limits** (owner's call: a browser may be left open). No too-fast or too-slow rules and no per-move timings stored; the spec's `run_timings` table is dropped.
+- **Open runs live in Postgres** (`live_runs`: racer, track, moves so far, current nonce), not memory, so they survive the connection dropping, the browser closing and the server restarting, and any server instance can continue a run. Each move is applied in a transaction that locks the row; finishing deletes the row and stores the run (`source = 'live'`) in the same transaction. Runs untouched for 30 days are cleaned up.
+- **Resuming**: on every connect the client sends `resume`; the server replies with the racer's open run (moves and a fresh nonce, which voids older nonces) or `no_run`. Coming back to the page switches to that run's track and rebuilds the trail. After a reconnect the client resends moves the server missed.
+- **Only live runs are ranked** (owner's call). `POST /tracks/:slug/runs` still verifies and stores whole move lists (`source = 'replay'`, for imports and tests) but they never appear on the leaderboard.
+- The client moves the car immediately (same deterministic sim) and the server confirms; if a confirmed state ever differs, the client resyncs from the server.
+- Limits: messages over 1 KB close the socket (1009); more than 50 messages a second close it (1008); 30 run starts per minute per racer.
+- **No undo** (owner's call: "there is no undo in racing"). Restart begins a new run.
+- Speed in the HUD is one positive number, the length of the velocity vector, not the signed `vx, vy`.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BEST, newPlayer, submit, testApp } from './helpers';
+import { BEST, liveRun, newPlayer, testApp } from './helpers';
 
 const { app } = await testApp();
 
@@ -25,8 +25,8 @@ describe('players', () => {
   it('renames, and the new name shows on all of the racer’s runs', async () => {
     const { app } = await testApp();
     const p = await newPlayer(app);
-    await submit(app, 'dogleg', { trackVersion: 1, moves: BEST.dogleg }, p.cookie);
-    await submit(app, 'oval', { trackVersion: 1, moves: BEST.oval }, p.cookie);
+    await liveRun(app, 'dogleg', BEST.dogleg, p.cookie);
+    await liveRun(app, 'oval', BEST.oval, p.cookie);
 
     const rename = (displayName: unknown) =>
       app.inject({ method: 'PATCH', url: '/api/player', headers: { cookie: p.cookie }, payload: { displayName } });

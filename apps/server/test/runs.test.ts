@@ -1,7 +1,7 @@
 import { replay } from '@vector-racer/sim';
 import { getBuiltinTrack } from '@vector-racer/tracks';
 import { describe, expect, it } from 'vitest';
-import { BEST, newPlayer, submit, testApp } from './helpers';
+import { BEST, liveRun, newPlayer, submit, testApp } from './helpers';
 
 const { app, db } = await testApp();
 
@@ -10,7 +10,8 @@ describe('POST /tracks/:slug/runs (Phase 2 acceptance)', () => {
     const p = await newPlayer(app);
     const res = await submit(app, 'oval', { trackVersion: 1, moves: BEST.oval, score: 1, turns: 1 }, p.cookie);
     expect(res.statusCode).toBe(201);
-    expect(res.json()).toEqual({ score: 25, par: 25, best: { rank: 1, score: 25 }, isBest: true });
+    // Posted runs are verified and stored, but only live runs are ranked.
+    expect(res.json()).toEqual({ score: 25, par: 25, best: null, isBest: false });
 
     const row = await db.query('SELECT score, moves, sim_version, source FROM runs WHERE player_id = $1', [p.id]);
     const expected = replay(getBuiltinTrack('oval')!.track, BEST.oval).score;
@@ -97,26 +98,19 @@ describe('POST /tracks/:slug/runs (Phase 2 acceptance)', () => {
 });
 
 describe('leaderboard', () => {
-  it('shows each racer once with their best run; ties to the earlier run; hidden runs excluded', async () => {
-    const { app, db } = await testApp();
+  it('shows each racer once with their best run; ties to the earlier run', async () => {
+    const { app } = await testApp();
     const rename = (cookie: string, displayName: string) =>
       app.inject({ method: 'PATCH', url: '/api/player', headers: { cookie }, payload: { displayName } });
-    const [slow, fast, tie, spam] = [
-      await newPlayer(app),
-      await newPlayer(app),
-      await newPlayer(app),
-      await newPlayer(app),
-    ];
+    const [slow, fast, tie] = [await newPlayer(app), await newPlayer(app), await newPlayer(app)];
     await rename(slow.cookie, 'slow');
     await rename(fast.cookie, 'fast');
     await rename(tie.cookie, 'Tie');
     const slower = [4, ...BEST.dogleg]; // coast once first: 9 turns
-    await submit(app, 'dogleg', { trackVersion: 1, moves: slower }, slow.cookie);
-    await submit(app, 'dogleg', { trackVersion: 1, moves: slower }, fast.cookie);
-    await submit(app, 'dogleg', { trackVersion: 1, moves: BEST.dogleg }, fast.cookie);
-    await submit(app, 'dogleg', { trackVersion: 1, moves: BEST.dogleg }, tie.cookie);
-    await submit(app, 'dogleg', { trackVersion: 1, moves: BEST.dogleg }, spam.cookie);
-    await db.query('UPDATE runs SET hidden = true WHERE player_id = $1', [spam.id]);
+    await liveRun(app, 'dogleg', slower, slow.cookie);
+    await liveRun(app, 'dogleg', slower, fast.cookie);
+    await liveRun(app, 'dogleg', BEST.dogleg, fast.cookie);
+    await liveRun(app, 'dogleg', BEST.dogleg, tie.cookie);
 
     const board = (await app.inject({ url: '/api/tracks/dogleg/leaderboard', headers: { cookie: tie.cookie } })).json();
     expect(board.track).toEqual({ slug: 'dogleg', version: 1, par: 8 });

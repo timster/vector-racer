@@ -71,14 +71,6 @@ export class Game {
     return r;
   }
 
-  undo(): boolean {
-    if (this.moves.length === 0) return false;
-    this.moves.pop();
-    this.states.pop();
-    this.crashed.pop();
-    return true;
-  }
-
   exportRun(): string {
     return JSON.stringify({ track: this.track.slug, trackVersion: this.track.version, moves: this.moves });
   }

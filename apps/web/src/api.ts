@@ -14,14 +14,6 @@ export interface ApiTrack {
   map: string;
 }
 
-export interface SubmitResponse {
-  score: number;
-  par: number | null;
-  /** This racer's best on the track, and its rank. */
-  best: { rank: number; score: number } | null;
-  isBest: boolean;
-}
-
 export interface LeaderboardEntry {
   rank: number;
   playerName: string;
@@ -72,8 +64,6 @@ export const api = {
   /** This browser's racer, created with a default name on first visit. */
   player: () => call<Player>('POST', '/player'),
   rename: (displayName: string) => call<Player>('PATCH', '/player', { displayName }),
-  submitRun: (slug: string, trackVersion: number, moves: number[]) =>
-    call<SubmitResponse>('POST', `/tracks/${encodeURIComponent(slug)}/runs`, { trackVersion, moves }),
   leaderboard: (slug: string, limit = 50) =>
     call<Leaderboard>('GET', `/tracks/${encodeURIComponent(slug)}/leaderboard?limit=${limit}`),
 };

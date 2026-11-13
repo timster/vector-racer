@@ -1,6 +1,7 @@
 import fastifyCookie from '@fastify/cookie';
 import fastifyRateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
+import fastifyWebsocket from '@fastify/websocket';
 import Fastify, {
   type FastifyInstance,
   type FastifyReply,
@@ -9,6 +10,7 @@ import Fastify, {
 } from 'fastify';
 import type { Config } from './config';
 import type { Db } from './db/pool';
+import { liveRoutes, MAX_MESSAGE_BYTES } from './live';
 import { COOKIE_DAYS, PLAYER_COOKIE, playerByToken, type Player } from './players';
 import { playerRoutes } from './routes/player';
 import { trackRoutes } from './routes/tracks';
@@ -43,11 +45,14 @@ export async function buildApp(config: Config, db: Db): Promise<FastifyInstance>
   app.decorateRequest('player', null);
 
   await app.register(fastifyCookie);
+  await app.register(fastifyWebsocket, { options: { maxPayload: MAX_MESSAGE_BYTES } });
 
   await app.register(fastifyRateLimit, {
     global: true,
     max: config.rateLimits.globalPerMinute,
     timeWindow: '1 minute',
+    // The plugin's default key crashes when a request has no remote address (in-process injection).
+    keyGenerator: (req) => req.ip ?? 'unknown',
     errorResponseBuilder: (_req, ctx) => ({
       statusCode: 429,
       error: 'rate_limited',
@@ -92,7 +97,9 @@ export async function buildApp(config: Config, db: Db): Promise<FastifyInstance>
   // Who is racing: the anonymous player this browser's cookie points to, if any.
   app.addHook('onRequest', async (req) => {
     const token = req.cookies[PLAYER_COOKIE];
-    if (token && req.url.startsWith('/api/')) req.player = (await playerByToken(db, token)) ?? null;
+    if (token && (req.url.startsWith('/api/') || req.url === '/ws')) {
+      req.player = (await playerByToken(db, token)) ?? null;
+    }
   });
 
   // Browsers on other sites can't post runs here. (Scripts can, which is why every run is replayed.)
@@ -124,6 +131,8 @@ export async function buildApp(config: Config, db: Db): Promise<FastifyInstance>
     },
     { prefix: '/api' },
   );
+
+  await app.register(liveRoutes);
 
   if (config.staticDir) await app.register(fastifyStatic, { root: config.staticDir });
 

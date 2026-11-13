@@ -59,11 +59,12 @@ export interface LeaderboardEntry {
   createdAt: Date;
 }
 
-// Each player's best run on a track: lowest score, then earliest submission.
+// Each player's best live run on a track: lowest score, then earliest. Only runs raced over a
+// live session are ranked; whole move lists posted at the end (source 'replay') never are.
 const BEST_PER_PLAYER = `
   SELECT DISTINCT ON (player_id) id, player_id, score, created_at
   FROM runs
-  WHERE track_id = $1 AND NOT hidden
+  WHERE track_id = $1 AND source = 'live'
   ORDER BY player_id, score, created_at, id`;
 
 export async function leaderboard(db: Queryable, trackId: number, limit: number): Promise<LeaderboardEntry[]> {

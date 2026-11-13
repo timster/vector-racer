@@ -6,6 +6,10 @@ export interface RateLimits {
   /** Run submissions per minute, per player and per IP. */
   runsPerMinutePerPlayer: number;
   runsPerMinutePerIp: number;
+  /** Live runs started per minute per racer. */
+  liveStartsPerMinute: number;
+  /** Messages per second on one live socket before it is closed (a reconnect may flush queued moves). */
+  liveMessagesPerSecond: number;
 }
 
 export interface Config {
@@ -28,6 +32,8 @@ export const DEFAULT_RATE_LIMITS: RateLimits = {
   playersPerHour: 20,
   runsPerMinutePerPlayer: 20,
   runsPerMinutePerIp: 60,
+  liveStartsPerMinute: 30,
+  liveMessagesPerSecond: 50,
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
