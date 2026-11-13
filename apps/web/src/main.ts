@@ -540,10 +540,6 @@ window.addEventListener('keydown', (e) => {
     play(move);
   } else if (e.ctrlKey) {
     return;
-  } else if (e.code === 'KeyR') {
-    restart();
-  } else if (e.code === 'KeyL') {
-    toggleBoard();
   } else if (e.code === 'Escape' && !boardPanel.hidden) {
     toggleBoard(false);
   } else if (DEV_TOOLS && e.code === 'KeyB') {

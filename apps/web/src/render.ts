@@ -211,6 +211,18 @@ export class Renderer {
         if (wallAt(x, y + 1)) g.fillRect(px, py + cell - curb, cell, curb);
         if (wallAt(x - 1, y)) g.fillRect(px, py, curb, cell);
         if (wallAt(x + 1, y)) g.fillRect(px + cell - curb, py, curb, cell);
+        // Where a wall only touches this cell at a corner (the wall's outer corner), the curbs
+        // along the wall's two sides stop short of each other; fill the square between them.
+        for (const [dx, dy] of [
+          [-1, -1],
+          [1, -1],
+          [-1, 1],
+          [1, 1],
+        ] as const) {
+          if (wallAt(x + dx, y + dy) && !wallAt(x + dx, y) && !wallAt(x, y + dy)) {
+            g.fillRect(dx < 0 ? px : px + cell - curb, dy < 0 ? py : py + cell - curb, curb, curb);
+          }
+        }
       }
   }
 
