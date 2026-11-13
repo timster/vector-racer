@@ -1,0 +1,16 @@
+{
+  "name": "@vector-racer/tracks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./golden/cases.json": "./golden/cases.json"
+  },
+  "dependencies": {
+    "@vector-racer/sim": "*"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

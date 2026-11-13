@@ -1,0 +1,34 @@
+{
+  "name": "vector-racer",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "tools/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @vector-racer/web --",
+    "build": "npm run build -w @vector-racer/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "replay": "tsx tools/replay-cli/src/main.ts",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "oxfmt": "0.78.0",
+    "oxlint": "^1.93.0",
+    "oxlint-tsgolint": "^7.0.2007",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

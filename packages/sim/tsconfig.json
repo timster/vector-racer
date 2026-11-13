@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No DOM lib and no Node types: the sim cannot reach window, document, fetch or process.
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src", "test"]
+}

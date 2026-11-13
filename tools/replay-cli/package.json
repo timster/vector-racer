@@ -1,0 +1,13 @@
+{
+  "name": "@vector-racer/replay-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vector-racer/sim": "*",
+    "@vector-racer/tracks": "*"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

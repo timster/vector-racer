@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vector Racer</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <h1 class="brand">Vector Racer</h1>
+      <label class="field">
+        <span>Track</span>
+        <select id="track-select"></select>
+      </label>
+      <dl class="stats">
+        <div>
+          <dt>Turn</dt>
+          <dd id="stat-turn">0</dd>
+        </div>
+        <div>
+          <dt>Speed</dt>
+          <dd id="stat-speed">0, 0</dd>
+        </div>
+        <div>
+          <dt>Checkpoints</dt>
+          <dd id="stat-cp">0 / 0</dd>
+        </div>
+        <div>
+          <dt>Best possible</dt>
+          <dd id="stat-best">…</dd>
+        </div>
+      </dl>
+      <div class="actions">
+        <button id="btn-best" type="button" aria-pressed="false" title="Show the fastest possible line (B)">
+          Best line
+        </button>
+        <button id="btn-watch" type="button" title="Watch the fastest lap (G)">Watch best</button>
+        <button id="btn-undo" type="button" title="Undo (Backspace)">Undo</button>
+        <button id="btn-restart" type="button" title="Restart (R)">Restart</button>
+        <button id="btn-copy" type="button" title="Copy this run as JSON">Copy run</button>
+      </div>
+    </header>
+
+    <main class="stage">
+      <canvas id="board"></canvas>
+      <p id="toast" class="toast" role="status" aria-live="polite" hidden></p>
+      <section id="finish" class="finish" hidden>
+        <h2>Finished in <span id="finish-turns">0</span> turns</h2>
+        <p id="finish-detail"></p>
+        <div class="actions">
+          <button id="finish-copy" type="button">Copy run</button>
+          <button id="finish-restart" type="button" class="primary">Race again</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="help">
+      Click a dot to pick your next position. Keys: numpad 1–9 or Q W E / A S D / Z X C · Backspace undo · R restart · B
+      best line · G watch best
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

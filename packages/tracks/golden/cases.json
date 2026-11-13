@@ -1,0 +1,99 @@
+{
+  "description": "Shared replay cases. Client and server tests both run these so the two can never drift. Each case gives a track (inline map or built-in slug), a move list, and either expectedScore or expectedReason.",
+  "simVersion": "1.2.0",
+  "cases": [
+    {
+      "name": "corridor, finish before off-grid landing",
+      "map": "S....F",
+      "moves": [5, 5, 5],
+      "expectedScore": 3
+    },
+    {
+      "name": "L-bend coasting into the corner",
+      "map": "S...#\n###.#\n###.#\n###F#",
+      "moves": [5, 4, 4, 6, 7],
+      "expectedScore": 5
+    },
+    {
+      "name": "L-bend overshoot, stop at wall, +3 penalty turns",
+      "map": "S...#\n###.#\n###.#\n###F#",
+      "moves": [5, 5, 8, 7, 7],
+      "expectedScore": 8
+    },
+    {
+      "name": "diagonal squeeze between wall corners stops the car",
+      "map": "S#\n#F",
+      "moves": [8],
+      "expectedReason": "did_not_finish"
+    },
+    {
+      "name": "checkpoints in order, finish closed until all crossed",
+      "map": "S.2.1.F",
+      "moves": [5, 5, 4, 5, 3, 3, 3, 5, 5, 5, 5],
+      "expectedScore": 17
+    },
+    {
+      "name": "extra move after finish",
+      "map": "SF",
+      "moves": [5, 3],
+      "expectedReason": "moves_after_finish at move 1"
+    },
+    {
+      "name": "bad move index",
+      "map": "S....F",
+      "moves": [5, 9],
+      "expectedReason": "invalid_move at move 1"
+    },
+    {
+      "name": "fractional move index",
+      "map": "S....F",
+      "moves": [5, 1.5],
+      "expectedReason": "invalid_move at move 1"
+    },
+    {
+      "name": "too many moves for maxTurns",
+      "map": "S....F",
+      "maxTurns": 2,
+      "moves": [5, 5, 5],
+      "expectedReason": "too_many_moves"
+    },
+    {
+      "name": "dogleg optimal",
+      "slug": "dogleg",
+      "trackVersion": 1,
+      "moves": [5, 4, 8, 8, 8, 1, 2, 2],
+      "expectedScore": 8
+    },
+    {
+      "name": "oval optimal",
+      "slug": "oval",
+      "trackVersion": 1,
+      "moves": [2, 5, 8, 4, 5, 4, 6, 6, 6, 3, 3, 1, 0, 0, 0, 3, 7, 8, 2, 2, 2, 2, 5, 5, 8],
+      "expectedScore": 25
+    },
+    {
+      "name": "circuit optimal",
+      "slug": "circuit",
+      "trackVersion": 1,
+      "moves": [
+        2, 5, 7, 5, 5, 5, 5, 4, 3, 6, 6, 6, 6, 6, 1, 0, 0, 0, 0, 1, 2, 2, 5, 5, 6, 6, 6, 8, 8, 8, 6, 0, 0, 0, 0, 2, 2,
+        2, 2, 2, 8, 8, 5, 5
+      ],
+      "expectedScore": 44
+    },
+    {
+      "name": "oval backwards across the line does not finish",
+      "slug": "oval",
+      "trackVersion": 1,
+      "moves": [3, 4],
+      "expectedReason": "did_not_finish"
+    },
+    {
+      "name": "oval wall-braking line: 22 moves + 2 hits x 3 penalty turns",
+      "slug": "oval",
+      "trackVersion": 1,
+      "moves": [2, 5, 8, 5, 8, 7, 6, 6, 6, 6, 3, 0, 3, 0, 1, 2, 2, 2, 2, 2, 2, 5],
+      "expectedScore": 28
+    }
+  ]
+}

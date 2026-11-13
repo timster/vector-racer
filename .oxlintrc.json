@@ -1,0 +1,40 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import", "vitest"],
+  "categories": { "correctness": "error" },
+  "options": { "typeAware": true },
+  "ignorePatterns": ["**/dist/**", "**/coverage/**"],
+  "rules": {
+    // Golden cases and the property test assert inside branches on purpose.
+    "vitest/no-conditional-expect": "off",
+    // Golden case titles come from JSON data.
+    "vitest/valid-title": "off"
+  },
+  "overrides": [
+    {
+      // The shared sim must stay pure: no DOM, no I/O, no clocks, no randomness.
+      "files": ["packages/sim/src/**/*.ts"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          { "name": "window", "message": "sim must not touch the DOM" },
+          { "name": "document", "message": "sim must not touch the DOM" },
+          { "name": "fetch", "message": "sim must not do I/O" },
+          { "name": "Date", "message": "sim must be deterministic" },
+          { "name": "performance", "message": "sim must be deterministic" },
+          { "name": "crypto", "message": "sim must be deterministic" },
+          { "name": "process", "message": "sim must not depend on the runtime" }
+        ],
+        "no-restricted-properties": [
+          "error",
+          { "object": "Math", "property": "random", "message": "sim must be deterministic" },
+          { "object": "Math", "property": "sqrt", "message": "sim is integer-only" }
+        ],
+        "no-restricted-imports": [
+          "error",
+          { "patterns": [{ "regex": "^[^.]", "message": "sim has no dependencies; only relative imports" }] }
+        ]
+      }
+    }
+  ]
+}
