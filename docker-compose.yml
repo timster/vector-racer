@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: vr
+      POSTGRES_PASSWORD: vr
+      POSTGRES_DB: vector_racer
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U vr -d vector_racer']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  # Throwaway database for tests: lives in RAM, durability off for speed.
+  db-test:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: vr
+      POSTGRES_PASSWORD: vr
+      POSTGRES_DB: postgres
+    ports:
+      - '127.0.0.1:5433:5432'
+    tmpfs:
+      - /var/lib/postgresql
+    command: ['postgres', '-c', 'fsync=off', '-c', 'synchronous_commit=off', '-c', 'full_page_writes=off']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U vr']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:

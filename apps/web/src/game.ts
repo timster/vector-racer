@@ -5,6 +5,11 @@ export interface Candidate {
   move: MoveIndex;
   /** Where the car aims for (position + velocity + acceleration), even if off the grid. */
   target: { x: number; y: number };
+  /**
+   * Where to draw the clickable dot: the target, except for a finishing move, which is pinned
+   * to where the path first crosses the line (the target may be far past it, off the board).
+   */
+  dot: { x: number; y: number };
   result: StepResult;
 }
 
@@ -38,6 +43,7 @@ export class Game {
     return this.states[this.states.length - 1]!;
   }
 
+  /** The moves to offer as clickable dots. */
   candidates(): Candidate[] {
     const s = this.state;
     if (s.finished) return [];
@@ -45,13 +51,14 @@ export class Game {
     for (let m = 0; m <= 8; m++) {
       const move = m as MoveIndex;
       const { ax, ay } = moveToAccel(move);
-      out.push({
-        move,
-        target: { x: s.x + s.vx + ax, y: s.y + s.vy + ay },
-        result: step(this.track.track, s, move),
-      });
+      const target = { x: s.x + s.vx + ax, y: s.y + s.vy + ay };
+      const result = step(this.track.track, s, move);
+      const dot = result.ok && result.state.finished ? { x: result.state.x, y: result.state.y } : target;
+      out.push({ move, target, dot, result });
     }
-    return out;
+    // When some moves finish, those are the only ones worth offering.
+    const finishing = out.filter((c) => c.result.ok && c.result.state.finished);
+    return finishing.length ? finishing : out;
   }
 
   play(move: MoveIndex): StepResult {

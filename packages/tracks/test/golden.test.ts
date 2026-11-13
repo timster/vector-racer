@@ -1,6 +1,6 @@
 import { replay, SIM_VERSION } from '@vector-racer/sim';
 import { describe, expect, it } from 'vitest';
-import { GOLDEN_CASES, GOLDEN_SIM_VERSION, goldenTrack } from '../src';
+import { GOLDEN_CASES, GOLDEN_SIM_VERSION, goldenTrack } from '../src/golden';
 
 describe('golden replay cases', () => {
   it('were recorded against the current sim version', () => {

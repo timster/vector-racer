@@ -11,8 +11,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "npm run dev -w @vector-racer/web --",
-    "build": "npm run build -w @vector-racer/web",
+    "dev": "concurrently -k -n server,web -c blue,magenta \"npm run dev -w @vector-racer/server\" \"npm run dev -w @vector-racer/web\"",
+    "build": "npm run build -w @vector-racer/web && npm run build -w @vector-racer/server",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint",
@@ -20,10 +20,13 @@
     "replay": "tsx tools/replay-cli/src/main.ts",
     "check": "npm run lint && npm run typecheck && npm test",
     "format": "oxfmt",
-    "format:check": "oxfmt --check"
+    "format:check": "oxfmt --check",
+    "dev:web": "npm run dev -w @vector-racer/web --",
+    "db:up": "docker compose up -d --wait"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "concurrently": "^10.0.7",
     "oxfmt": "0.78.0",
     "oxlint": "^1.93.0",
     "oxlint-tsgolint": "^7.0.2007",

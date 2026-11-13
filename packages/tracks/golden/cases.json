@@ -1,6 +1,6 @@
 {
   "description": "Shared replay cases. Client and server tests both run these so the two can never drift. Each case gives a track (inline map or built-in slug), a move list, and either expectedScore or expectedReason.",
-  "simVersion": "1.2.0",
+  "simVersion": 1,
   "cases": [
     {
       "name": "corridor, finish before off-grid landing",
@@ -72,12 +72,31 @@
       "expectedScore": 25
     },
     {
-      "name": "circuit optimal",
-      "slug": "circuit",
+      "name": "hairpin optimal",
+      "slug": "hairpin",
       "trackVersion": 1,
       "moves": [
         2, 5, 7, 5, 5, 5, 5, 4, 3, 6, 6, 6, 6, 6, 1, 0, 0, 0, 0, 1, 2, 2, 5, 5, 6, 6, 6, 8, 8, 8, 6, 0, 0, 0, 0, 2, 2,
         2, 2, 2, 8, 8, 5, 5
+      ],
+      "expectedScore": 44
+    },
+    {
+      "name": "figure8 optimal",
+      "slug": "figure8",
+      "trackVersion": 1,
+      "moves": [
+        1, 2, 2, 7, 8, 8, 5, 4, 6, 6, 3, 6, 6, 6, 5, 2, 2, 2, 2, 2, 3, 0, 0, 0, 0, 6, 6, 6, 3, 6, 3, 3, 7, 5, 2, 1, 2, 1
+      ],
+      "expectedScore": 38
+    },
+    {
+      "name": "street optimal",
+      "slug": "street",
+      "trackVersion": 1,
+      "moves": [
+        2, 8, 4, 5, 5, 5, 6, 3, 6, 6, 6, 2, 2, 2, 2, 3, 6, 6, 6, 6, 0, 0, 0, 0, 1, 4, 8, 2, 2, 2, 7, 6, 6, 3, 5, 1, 2,
+        2, 2, 4, 8, 8, 5, 5
       ],
       "expectedScore": 44
     },

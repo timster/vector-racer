@@ -14,7 +14,7 @@ export interface GoldenCase {
   expectedReason?: string;
 }
 
-export const GOLDEN_SIM_VERSION: string = cases.simVersion;
+export const GOLDEN_SIM_VERSION: number = cases.simVersion;
 export const GOLDEN_CASES: readonly GoldenCase[] = cases.cases;
 
 /** Resolves a golden case's track, failing loudly if a built-in track's version has moved on. */

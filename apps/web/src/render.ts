@@ -69,6 +69,7 @@ export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly layer = document.createElement('canvas');
   private track: Track | undefined;
+  private initialHeading = 0;
   private cpLabels = new Map<number, Point>();
   private dpr = 1;
   cell = 10;
@@ -84,6 +85,7 @@ export class Renderer {
 
   setTrack(track: Track): void {
     this.track = track;
+    this.initialHeading = startHeading(track);
     // Label each checkpoint line at the cell nearest its centre.
     const sums = new Map<number, { x: number; y: number; n: number; cells: Point[] }>();
     for (let y = 0; y < track.height; y++)
@@ -135,7 +137,7 @@ export class Renderer {
     let best: Candidate | undefined;
     let bestD = this.cell * 0.6;
     for (const c of candidates) {
-      const p = this.toPx(c.target);
+      const p = this.toPx(c.dot);
       const d = Math.hypot(p.x - px, p.y - py);
       if (d < bestD) {
         best = c;
@@ -194,18 +196,21 @@ export class Renderer {
           }
       }
 
-    // Red and white curbs wherever road meets wall.
+    // Red and white curbs wherever road meets wall. Not along the map's outer edge: a road that
+    // reaches it reads as running on off the map (it is still a wall to the sim).
     const curb = Math.max(2, Math.round(cell * 0.16));
+    const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < track.width && y < track.height;
+    const wallAt = (x: number, y: number) => inside(x, y) && cellAt(track, x, y) === WALL;
     for (let y = 0; y < track.height; y++)
       for (let x = 0; x < track.width; x++) {
         if (cellAt(track, x, y) === WALL) continue;
         g.fillStyle = (x + y) % 2 ? THEME.curbA : THEME.curbB;
         const px = ox + x * cell;
         const py = oy + y * cell;
-        if (cellAt(track, x, y - 1) === WALL) g.fillRect(px, py, cell, curb);
-        if (cellAt(track, x, y + 1) === WALL) g.fillRect(px, py + cell - curb, cell, curb);
-        if (cellAt(track, x - 1, y) === WALL) g.fillRect(px, py, curb, cell);
-        if (cellAt(track, x + 1, y) === WALL) g.fillRect(px + cell - curb, py, curb, cell);
+        if (wallAt(x, y - 1)) g.fillRect(px, py, cell, curb);
+        if (wallAt(x, y + 1)) g.fillRect(px, py + cell - curb, cell, curb);
+        if (wallAt(x - 1, y)) g.fillRect(px, py, curb, cell);
+        if (wallAt(x + 1, y)) g.fillRect(px + cell - curb, py, curb, cell);
       }
   }
 
@@ -242,7 +247,7 @@ export class Renderer {
     }
 
     if (!motion) this.drawCandidates(game.candidates(), hover, game.state);
-    this.drawCar(this.sprites.car, car, heading(game.states, game.states.length - 1));
+    this.drawCar(this.sprites.car, car, heading(game.states, game.states.length - 1, this.initialHeading));
   }
 
   private drawGhost({ run, index, motion }: Ghost): void {
@@ -264,7 +269,7 @@ export class Renderer {
     const at = motion ? lerpPx(this.toPx(motion.from), this.toPx(motion.to), motion.t) : pts[index]!;
     ctx.save();
     ctx.globalAlpha = 0.8;
-    this.drawCar(this.sprites.ghost, at, heading(run.states, index));
+    this.drawCar(this.sprites.ghost, at, heading(run.states, index, this.initialHeading));
     ctx.restore();
   }
 
@@ -297,7 +302,7 @@ export class Renderer {
     if (hover && hover.result.ok) {
       const stop = this.toPx(hover.result.state);
       const prev = this.toPx(from);
-      const aim = this.toPx(hover.target);
+      const aim = this.toPx(hover.dot);
       ctx.lineWidth = Math.max(1.5, cell * 0.1);
       ctx.strokeStyle = hover.result.crashed ? THEME.crash : THEME.dotOk;
       ctx.setLineDash([cell * 0.3, cell * 0.25]);
@@ -314,7 +319,7 @@ export class Renderer {
 
     for (const c of candidates) {
       if (!c.result.ok) continue;
-      const p = this.toPx(c.target);
+      const p = this.toPx(c.dot);
       const big = c === hover;
       const r = cell * (big ? 0.36 : 0.26);
       if (c.result.crashed) {
@@ -341,14 +346,55 @@ export class Renderer {
   }
 }
 
-/** Direction of the most recent movement up to states[upto], or to the right before the first move. */
-function heading(states: readonly Point[], upto: number): number {
+/** Direction of the most recent movement up to states[upto], or `initial` before the first move. */
+function heading(states: readonly Point[], upto: number, initial: number): number {
   for (let i = upto; i > 0; i--) {
     const s = states[i]!;
     const p = states[i - 1]!;
     if (s.x !== p.x || s.y !== p.y) return Math.atan2(s.y - p.y, s.x - p.x);
   }
-  return 0;
+  return initial;
+}
+
+const DIRECTIONS = [
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+  [0, -1],
+] as const;
+
+/**
+ * Which way the car faces on the grid before it moves: away from the finish line when the start
+ * sits just past it (loops), otherwise along the longest open straight from the start.
+ */
+function startHeading(track: Track): number {
+  const { x: sx, y: sy } = track.start;
+  let nearest: Point | undefined;
+  let nearestD = Infinity;
+  for (let y = 0; y < track.height; y++)
+    for (let x = 0; x < track.width; x++) {
+      const d = Math.abs(x - sx) + Math.abs(y - sy);
+      if (cellAt(track, x, y) === FINISH && d < nearestD) {
+        nearest = { x, y };
+        nearestD = d;
+      }
+    }
+  if (nearest && nearestD <= 3) {
+    const dx = sx - nearest.x;
+    const dy = sy - nearest.y;
+    return Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 0 : Math.PI) : dy >= 0 ? Math.PI / 2 : -Math.PI / 2;
+  }
+  let best = 0;
+  let bestRun = -1;
+  for (const [dx, dy] of DIRECTIONS) {
+    let run = 0;
+    while (cellAt(track, sx + dx * (run + 1), sy + dy * (run + 1)) !== WALL) run++;
+    if (run > bestRun) {
+      bestRun = run;
+      best = Math.atan2(dy, dx);
+    }
+  }
+  return best;
 }
 
 function lerpPx(a: Point, b: Point, t: number): Point {

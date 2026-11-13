@@ -1,6 +1,7 @@
 import { replay } from '@vector-racer/sim';
 import { describe, expect, it } from 'vitest';
-import { BUILTIN_TRACKS, getBuiltinTrack, parseMap, parseTrack, shortestRun, validateTrack } from '../src';
+import { BUILTIN_TRACKS, getBuiltinTrack, parseMap, parseTrack, validateTrack } from '../src';
+import { shortestRun } from '../src/solve';
 
 describe('parseMap', () => {
   it('parses a small map and ignores surrounding blank lines', () => {
@@ -34,15 +35,10 @@ describe('validateTrack', () => {
 });
 
 describe('built-in tracks', () => {
-  it('have unique slugs and get bigger', () => {
+  it('have unique slugs, in display order', () => {
     const slugs = BUILTIN_TRACKS.map((t) => t.slug);
     expect(new Set(slugs).size).toBe(slugs.length);
-    const areas = BUILTIN_TRACKS.map((d) => {
-      const t = parseTrack(d).track;
-      return t.width * t.height;
-    });
-    expect([...areas].sort((a, b) => a - b)).toEqual(areas);
-    expect(BUILTIN_TRACKS).toHaveLength(3);
+    expect(BUILTIN_TRACKS.map((t) => t.name)).toEqual(['Dogleg', 'Oval', 'Hairpin', 'Figure8', 'Street']);
   });
 
   for (const def of BUILTIN_TRACKS) {
@@ -64,7 +60,7 @@ describe('built-in tracks', () => {
         return [d.slug, replay(track, shortestRun(track)).score];
       }),
     );
-    expect(best).toEqual({ dogleg: 8, oval: 25, circuit: 44 });
+    expect(best).toEqual({ dogleg: 8, oval: 25, hairpin: 44, figure8: 38, street: 44 });
   });
 
   it('getBuiltinTrack looks up by slug', () => {

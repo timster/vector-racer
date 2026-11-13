@@ -1,7 +1,7 @@
 import type { Point } from './track';
 
 /** Bump when step() behaviour changes in any way that could change a score. */
-export const SIM_VERSION = '1.2.0';
+export const SIM_VERSION = 1;
 
 export interface CollisionContext {
   /** Last clear cell on the traced path before the obstacle (may be the starting cell). */

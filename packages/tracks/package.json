@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./solve": "./src/solve.ts",
+    "./golden": "./src/golden.ts",
     "./golden/cases.json": "./golden/cases.json"
   },
   "dependencies": {

@@ -1,11 +1,15 @@
 import type { MoveIndex } from '@vector-racer/sim';
-import { BUILTIN_TRACKS, parseTrack, shortestRun, type ParsedTrack } from '@vector-racer/tracks';
+import { BUILTIN_TRACKS, parseTrack, type ParsedTrack } from '@vector-racer/tracks';
+import { api, ApiError, type Player } from './api';
 import { Game, type Candidate } from './game';
 import { loadSprites, Renderer, type Ghost, type Motion } from './render';
 
 const MOVE_MS = 160;
 /** Time per turn when watching the best lap. */
 const WATCH_MS = 220;
+const NAME_RE = /^[A-Za-z0-9 _-]{1,16}$/;
+/** The solver's best line is a testing aid, only in development builds (npm run dev). */
+const DEV_TOOLS = import.meta.env.DEV;
 
 // Numpad layout and QWE/ASD/ZXC both map to the 3x3 acceleration grid (y down).
 const KEY_TO_MOVE: Record<string, MoveIndex> = {
@@ -34,47 +38,72 @@ const canvas = $<HTMLCanvasElement>('board');
 const select = $<HTMLSelectElement>('track-select');
 const toast = $<HTMLParagraphElement>('toast');
 const finishPanel = $<HTMLElement>('finish');
+const boardPanel = $<HTMLElement>('board-panel');
+const nameButton = $<HTMLButtonElement>('btn-name');
+const nameForm = $<HTMLFormElement>('name-form');
+const nameInput = $<HTMLInputElement>('name-input');
 
 const renderer = new Renderer(canvas, await loadSprites());
+
+// Tracks come from the server when it's reachable; otherwise the built-ins, playable offline.
+let tracks: ParsedTrack[] = BUILTIN_TRACKS.map(parseTrack);
+/** Par per track slug, from the server. */
+const pars = new Map<string, number | null>();
+let online = false;
+let player: Player | null = null;
+
 let game: Game;
 let hover: Candidate | undefined;
 let motion: Motion | undefined;
 let toastTimer: number | undefined;
 
-// Best line: computed in the browser with the same search the tests use, cached per track version.
+// Dev only: the best line, computed in the browser with the solver, cached per track version.
 const bestRuns = new Map<string, Game>();
 let best: Game | undefined;
 let showBest = false;
 let watch: { index: number; motion?: Motion } | undefined;
 let watchFrame = 0;
 
-for (const def of BUILTIN_TRACKS) select.add(new Option(def.name, def.slug));
-
 function loadTrack(slug: string): void {
-  const def = BUILTIN_TRACKS.find((t) => t.slug === slug) ?? BUILTIN_TRACKS[0]!;
-  select.value = def.slug;
-  if (location.hash !== `#${def.slug}`) history.replaceState(null, '', `#${def.slug}`);
-  game = new Game(parseTrack(def));
-  renderer.setTrack(game.track.track);
+  const track = tracks.find((t) => t.slug === slug) ?? tracks[0]!;
+  select.value = track.slug;
+  if (location.hash !== `#${track.slug}`) history.replaceState(null, '', `#${track.slug}`);
+  game = new Game(track);
+  renderer.setTrack(track.track);
   best = undefined;
+  showBest = false;
   reset();
-  // Let the board paint first; the search takes a moment on bigger tracks.
-  const track = game.track;
-  window.setTimeout(() => {
-    if (game.track !== track) return;
-    best = bestFor(track);
-    update();
-  }, 0);
+  if (!boardPanel.hidden) void refreshBoard();
 }
 
-function bestFor(track: ParsedTrack): Game | undefined {
+/** Loads the best line for the current track the first time a dev tool asks for it. */
+async function ensureBest(): Promise<Game | undefined> {
+  const track = game.track;
+  const run = best ?? (await bestFor(track));
+  if (game.track !== track) return undefined;
+  best = run;
+  return run;
+}
+
+/**
+ * Dev builds only. The solver is loaded on demand, so production bundles never include it
+ * (import.meta.env.DEV is false there and this branch is removed at build time).
+ */
+async function bestFor(track: ParsedTrack): Promise<Game | undefined> {
   const key = `${track.slug}@${track.version}`;
   if (!bestRuns.has(key)) {
+    const { shortestRun } = await import('@vector-racer/tracks/solve');
+    // Let the board paint first; the search takes a moment on bigger tracks.
+    await new Promise((r) => setTimeout(r, 0));
     const moves = shortestRun(track.track);
     if (!moves) return undefined;
     bestRuns.set(key, Game.fromMoves(track, moves));
   }
   return bestRuns.get(key);
+}
+
+function par(): number | undefined {
+  return pars.get(game.track.slug) ?? best?.state.turn;
 }
 
 function reset(): void {
@@ -121,7 +150,7 @@ function animate(from: { x: number; y: number }, to: { x: number; y: number }): 
     motion = t < 1 ? { from, to, t: 1 - (1 - t) * (1 - t) } : undefined;
     draw();
     if (motion) requestAnimationFrame(frame);
-    else if (game.state.finished) showFinish();
+    else if (game.state.finished) void finish();
   };
   requestAnimationFrame(frame);
 }
@@ -132,12 +161,14 @@ function update(): void {
   $('stat-turn').textContent = String(s.turn);
   $('stat-speed').textContent = `${s.vx}, ${s.vy}`;
   $('stat-cp').textContent = `${Math.min(s.nextCheckpoint - 1, cps)} / ${cps}`;
-  $('stat-best').textContent = best ? String(best.state.turn) : '…';
+  $('stat-par').textContent = String(par() ?? '–');
   $<HTMLButtonElement>('btn-undo').disabled = game.moves.length === 0;
+  for (const el of document.querySelectorAll<HTMLElement>('.dev-only')) el.hidden = !DEV_TOOLS;
   $('btn-best').setAttribute('aria-pressed', String(showBest));
-  $<HTMLButtonElement>('btn-best').disabled = !best;
-  $<HTMLButtonElement>('btn-watch').disabled = !best;
   $('btn-watch').textContent = watch ? 'Stop' : 'Watch best';
+  $('btn-board').setAttribute('aria-pressed', String(!boardPanel.hidden));
+  nameButton.textContent = player?.displayName ?? (online ? '…' : 'offline');
+  nameButton.disabled = !player;
   draw();
 }
 
@@ -161,19 +192,20 @@ function ghostView(): Ghost | undefined {
   return { run: best, index };
 }
 
-function toggleBest(): void {
-  if (!best) return;
+async function toggleBest(): Promise<void> {
+  if (!(await ensureBest())) return;
+  stopWatching();
   showBest = !showBest;
   update();
 }
 
-function toggleWatch(): void {
+async function toggleWatch(): Promise<void> {
   if (watch) {
     stopWatching();
     update();
     return;
   }
-  const run = best;
+  const run = await ensureBest();
   if (!run) return;
   const last = run.states.length - 1;
   const start = performance.now();
@@ -209,13 +241,96 @@ function stopWatching(): void {
   watch = undefined;
 }
 
-function showFinish(): void {
+// --- Finishing: every finished run is submitted for this browser's racer --------------------
+
+async function finish(): Promise<void> {
   const crashes = game.crashed.filter(Boolean).length;
+  const p = par();
   $('finish-turns').textContent = String(game.state.turn);
-  const par = best ? ` · best possible ${best.state.turn}` : '';
-  $('finish-detail').textContent = `${game.track.name} · ${crashes} wall ${crashes === 1 ? 'hit' : 'hits'}${par}`;
+  $('finish-detail').textContent =
+    `${game.track.name} · ${crashes} wall ${crashes === 1 ? 'hit' : 'hits'}` + (p ? ` · par ${p}` : '');
   finishPanel.hidden = false;
+  await submitRun(game);
 }
+
+function setSubmitStatus(text: string, error = false): void {
+  const el = $('finish-submit');
+  el.textContent = text;
+  el.classList.toggle('error', error);
+}
+
+async function submitRun(run: Game): Promise<void> {
+  if (!online || !player) {
+    setSubmitStatus('Offline: this run was not submitted.', true);
+    return;
+  }
+  setSubmitStatus('Submitting…');
+  try {
+    const res = await api.submitRun(run.track.slug, run.track.version, run.moves);
+    if (game !== run) return;
+    const rank = res.best ? `#${res.best.rank}` : 'unranked';
+    setSubmitStatus(
+      res.isBest
+        ? `Verified ${res.score} turns: your best, ${rank} on the leaderboard.`
+        : `Verified ${res.score} turns. Your best is ${res.best?.score} (${rank}).`,
+    );
+    if (!boardPanel.hidden) void refreshBoard();
+  } catch (err) {
+    if (game !== run) return;
+    const e = err instanceof ApiError ? err : new ApiError(0, 'error', String(err));
+    if (e.code === 'duplicate_run') setSubmitStatus('Already on the board: you submitted this exact run before.');
+    else if (e.code === 'stale_track_version') {
+      setSubmitStatus('This track was updated. Reload to race the new version.', true);
+    } else setSubmitStatus(`Not submitted: ${e.message}`, true);
+  }
+}
+
+// --- Racer name (top right): click to edit; applies to all of this racer's runs -------------
+
+function normalizeName(raw: string): string | undefined {
+  const name = raw.trim().replace(/\s+/g, ' ');
+  return NAME_RE.test(name) ? name : undefined;
+}
+
+function editName(): void {
+  if (!player) return;
+  nameButton.hidden = true;
+  nameForm.hidden = false;
+  nameInput.value = player.displayName;
+  nameInput.focus();
+  nameInput.select();
+}
+
+function closeNameEditor(): void {
+  nameForm.hidden = true;
+  nameButton.hidden = false;
+}
+
+nameForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = normalizeName(nameInput.value);
+  if (!name) {
+    showToast('Names are 1–16 letters, numbers, spaces, _ or -', true);
+    return;
+  }
+  closeNameEditor();
+  if (name === player?.displayName) return;
+  try {
+    player = await api.rename(name);
+    showToast(`You’re racing as ${player.displayName}`);
+    update();
+    if (!boardPanel.hidden) void refreshBoard();
+  } catch (err) {
+    showToast(`Could not rename: ${err instanceof Error ? err.message : String(err)}`, true);
+  }
+});
+
+nameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeNameEditor();
+});
+nameInput.addEventListener('blur', () => {
+  if (!nameForm.hidden) nameForm.requestSubmit();
+});
 
 function showToast(text: string, crash = false): void {
   window.clearTimeout(toastTimer);
@@ -233,6 +348,61 @@ async function copyRun(): Promise<void> {
     showToast('Could not copy to clipboard');
   }
 }
+
+// --- Leaderboard ---------------------------------------------------------------------------
+
+function toggleBoard(open = boardPanel.hidden): void {
+  boardPanel.hidden = !open;
+  if (open) void refreshBoard();
+  update();
+}
+
+async function refreshBoard(): Promise<void> {
+  const track = game.track;
+  const list = $('board-list');
+  const sub = $('board-sub');
+  const mine = $('board-me');
+  if (!online) {
+    list.replaceChildren();
+    sub.textContent = 'The leaderboard needs the server, which is not reachable.';
+    mine.textContent = '';
+    return;
+  }
+  sub.textContent = `${track.name} · loading…`;
+  try {
+    const board = await api.leaderboard(track.slug);
+    if (game.track !== track) return;
+    const p = board.track.par ? ` · par ${board.track.par}` : '';
+    sub.textContent =
+      board.entries.length === 0
+        ? `${track.name}: no runs yet. Finish a lap to take first place.`
+        : `${track.name}${p}`;
+    // Names are player-chosen: always set as text, never as HTML.
+    list.replaceChildren(
+      ...board.entries.map((e) => {
+        const li = document.createElement('li');
+        li.classList.toggle('me', e.isMe);
+        const rank = document.createElement('span');
+        rank.className = 'rank';
+        rank.textContent = String(e.rank);
+        const who = document.createElement('span');
+        who.className = 'name';
+        who.textContent = e.isMe ? `${e.playerName} (you)` : e.playerName;
+        const score = document.createElement('span');
+        score.className = 'score';
+        score.textContent = String(e.score);
+        li.append(rank, who, score);
+        return li;
+      }),
+    );
+    const shown = board.entries.some((e) => e.isMe);
+    mine.textContent = board.me && !shown ? `Your best: ${board.me.score} turns, #${board.me.rank}` : '';
+  } catch (err) {
+    sub.textContent = `Could not load the leaderboard: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+// --- Input --------------------------------------------------------------------------------
 
 function pointer(e: PointerEvent): { x: number; y: number } {
   const rect = canvas.getBoundingClientRect();
@@ -262,6 +432,7 @@ canvas.addEventListener('click', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return;
   if (e.target instanceof HTMLSelectElement || e.metaKey || e.altKey) {
     if ((e.metaKey || e.ctrlKey) && e.code === 'KeyZ') {
       e.preventDefault();
@@ -276,12 +447,18 @@ window.addEventListener('keydown', (e) => {
   } else if (e.code === 'Backspace' || (e.ctrlKey && e.code === 'KeyZ')) {
     e.preventDefault();
     undo();
-  } else if (e.code === 'KeyR' && !e.ctrlKey) {
+  } else if (e.ctrlKey) {
+    return;
+  } else if (e.code === 'KeyR') {
     restart();
-  } else if (e.code === 'KeyB' && !e.ctrlKey) {
-    toggleBest();
-  } else if (e.code === 'KeyG' && !e.ctrlKey) {
-    toggleWatch();
+  } else if (e.code === 'KeyL') {
+    toggleBoard();
+  } else if (e.code === 'Escape' && !boardPanel.hidden) {
+    toggleBoard(false);
+  } else if (DEV_TOOLS && e.code === 'KeyB') {
+    void toggleBest();
+  } else if (DEV_TOOLS && e.code === 'KeyG') {
+    void toggleWatch();
   }
 });
 
@@ -295,12 +472,30 @@ window.addEventListener('resize', () => {
   draw();
 });
 
-$('btn-best').addEventListener('click', toggleBest);
-$('btn-watch').addEventListener('click', toggleWatch);
+$('btn-best').addEventListener('click', () => void toggleBest());
+$('btn-watch').addEventListener('click', () => void toggleWatch());
 $('btn-undo').addEventListener('click', undo);
 $('btn-restart').addEventListener('click', restart);
-$('btn-copy').addEventListener('click', copyRun);
+$('btn-board').addEventListener('click', () => toggleBoard());
+$('board-close').addEventListener('click', () => toggleBoard(false));
+nameButton.addEventListener('click', editName);
 $('finish-copy').addEventListener('click', copyRun);
+$('finish-board').addEventListener('click', () => toggleBoard(true));
 $('finish-restart').addEventListener('click', restart);
 
+// --- Start --------------------------------------------------------------------------------
+
+try {
+  const [serverTracks, me] = await Promise.all([api.tracks(), api.player()]);
+  tracks = serverTracks.map((t) =>
+    parseTrack({ slug: t.slug, name: t.name, version: t.version, maxTurns: t.maxTurns, map: t.map }),
+  );
+  for (const t of serverTracks) pars.set(t.slug, t.par);
+  player = me;
+  online = true;
+} catch {
+  online = false;
+}
+for (const t of tracks) select.add(new Option(t.name, t.slug));
 loadTrack(location.hash.slice(1));
+if (!online) showToast('Server not reachable: playing offline, runs are not submitted');
