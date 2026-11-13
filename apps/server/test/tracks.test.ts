@@ -13,9 +13,10 @@ describe('tracks', () => {
     const list = (await app.inject({ url: '/api/tracks' })).json();
     expect(list.map((t: { slug: string; version: number; par: number }) => [t.slug, t.version, t.par])).toEqual([
       ['dogleg', 1, 8],
+      ['bend', 1, 14],
       ['oval', 1, 25],
-      ['hairpin', 1, 44],
       ['figure8', 1, 38],
+      ['hairpin', 1, 44],
       ['street', 1, 44],
     ]);
     expect(parseMap(list[0].map).width).toBe(30);

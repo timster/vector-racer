@@ -38,7 +38,7 @@ describe('built-in tracks', () => {
   it('have unique slugs, in display order', () => {
     const slugs = BUILTIN_TRACKS.map((t) => t.slug);
     expect(new Set(slugs).size).toBe(slugs.length);
-    expect(BUILTIN_TRACKS.map((t) => t.name)).toEqual(['Dogleg', 'Oval', 'Hairpin', 'Figure8', 'Street']);
+    expect(BUILTIN_TRACKS.map((t) => t.name)).toEqual(['Dogleg', 'Bend', 'Oval', 'Figure8', 'Hairpin', 'Street']);
   });
 
   for (const def of BUILTIN_TRACKS) {
@@ -60,7 +60,7 @@ describe('built-in tracks', () => {
         return [d.slug, replay(track, shortestRun(track)).score];
       }),
     );
-    expect(best).toEqual({ dogleg: 8, oval: 25, hairpin: 44, figure8: 38, street: 44 });
+    expect(best).toEqual({ dogleg: 8, bend: 14, oval: 25, figure8: 38, hairpin: 44, street: 44 });
   });
 
   it('getBuiltinTrack looks up by slug', () => {

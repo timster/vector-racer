@@ -65,6 +65,13 @@
       "expectedScore": 8
     },
     {
+      "name": "bend optimal",
+      "slug": "bend",
+      "trackVersion": 1,
+      "moves": [7, 8, 5, 1, 2, 2, 0, 6, 6, 8, 4, 8, 2, 2],
+      "expectedScore": 14
+    },
+    {
       "name": "oval optimal",
       "slug": "oval",
       "trackVersion": 1,

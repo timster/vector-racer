@@ -52,13 +52,13 @@ function fromRow(row: TrackRow): StoredTrack {
   };
 }
 
-/** Current (latest released) version of every track, in display order. */
+/** Current (latest released) version of every track, easiest (lowest par) first. */
 export async function listTracks(db: Queryable): Promise<StoredTrack[]> {
   const { rows } = await db.query<TrackRow>(
     `SELECT * FROM (
        SELECT DISTINCT ON (slug) ${COLUMNS}, position FROM tracks
        WHERE release_at <= now() ORDER BY slug, version DESC
-     ) t ORDER BY position, slug`,
+     ) t ORDER BY par NULLS LAST, position, slug`,
   );
   return rows.map(fromRow);
 }

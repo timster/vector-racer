@@ -368,16 +368,14 @@ function heading(states: readonly Point[], upto: number, initial: number): numbe
   return initial;
 }
 
-const DIRECTIONS = [
-  [1, 0],
-  [0, 1],
-  [-1, 0],
-  [0, -1],
-] as const;
+/** The grid direction (right, down, left or up) closest to the vector dx, dy. */
+function axisAngle(dx: number, dy: number): number {
+  return Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 0 : Math.PI) : dy >= 0 ? Math.PI / 2 : -Math.PI / 2;
+}
 
 /**
- * Which way the car faces on the grid before it moves: away from the finish line when the start
- * sits just past it (loops), otherwise along the longest open straight from the start.
+ * Which way the car faces before it moves: away from the finish line when the start sits just
+ * past it (loops), otherwise toward the finish (point-to-point tracks).
  */
 function startHeading(track: Track): number {
   const { x: sx, y: sy } = track.start;
@@ -391,22 +389,8 @@ function startHeading(track: Track): number {
         nearestD = d;
       }
     }
-  if (nearest && nearestD <= 3) {
-    const dx = sx - nearest.x;
-    const dy = sy - nearest.y;
-    return Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 0 : Math.PI) : dy >= 0 ? Math.PI / 2 : -Math.PI / 2;
-  }
-  let best = 0;
-  let bestRun = -1;
-  for (const [dx, dy] of DIRECTIONS) {
-    let run = 0;
-    while (cellAt(track, sx + dx * (run + 1), sy + dy * (run + 1)) !== WALL) run++;
-    if (run > bestRun) {
-      bestRun = run;
-      best = Math.atan2(dy, dx);
-    }
-  }
-  return best;
+  if (!nearest) return 0;
+  return nearestD <= 3 ? axisAngle(sx - nearest.x, sy - nearest.y) : axisAngle(nearest.x - sx, nearest.y - sy);
 }
 
 function lerpPx(a: Point, b: Point, t: number): Point {
