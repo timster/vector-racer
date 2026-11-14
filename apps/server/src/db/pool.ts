@@ -19,7 +19,10 @@ export async function withTransaction<T>(db: Db, fn: (client: pg.PoolClient) => 
   try {
     await client.query('BEGIN');
     const result = await fn(client);
-    await client.query('COMMIT');
+    // If a statement failed and fn caught the error, Postgres has already aborted the
+    // transaction and turns COMMIT into a rollback. Don't report that as success.
+    const commit = await client.query('COMMIT');
+    if (commit.command === 'ROLLBACK') throw new Error('Transaction was aborted by an earlier error and rolled back');
     return result;
   } catch (err) {
     await client.query('ROLLBACK');
