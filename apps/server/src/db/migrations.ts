@@ -63,6 +63,15 @@ export const MIGRATIONS: readonly { name: string; sql: string }[] = [
       );
     `,
   },
+  {
+    // Identical runs are allowed: the leaderboard keeps each player's best run, so a repeat
+    // can't change anyone's rank, and refusing one threw away live runs raced on the same line.
+    name: '002_drop_move_hash',
+    sql: `
+      DROP INDEX runs_unique_moves;
+      ALTER TABLE runs DROP COLUMN move_hash;
+    `,
+  },
 ];
 
 /** Applies pending migrations in order, each in its own transaction, under an advisory lock. */

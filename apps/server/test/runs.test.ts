@@ -66,13 +66,10 @@ describe('POST /tracks/:slug/runs (Phase 2 acceptance)', () => {
     expect(res.json()).toMatchObject({ error: 'stale_track_version', currentVersion: 1 });
   });
 
-  it('rejects an exact duplicate run from the same racer, but not from another racer', async () => {
+  it('accepts the same run twice from the same racer', async () => {
     const a = await newPlayer(app);
     expect((await submit(app, 'dogleg', { trackVersion: 1, moves: BEST.dogleg }, a.cookie)).statusCode).toBe(201);
-    const dup = await submit(app, 'dogleg', { trackVersion: 1, moves: BEST.dogleg }, a.cookie);
-    expect(dup.statusCode).toBe(409);
-    expect(dup.json().error).toBe('duplicate_run');
-    expect((await submit(app, 'dogleg', { trackVersion: 1, moves: BEST.dogleg })).statusCode).toBe(201);
+    expect((await submit(app, 'dogleg', { trackVersion: 1, moves: BEST.dogleg }, a.cookie)).statusCode).toBe(201);
   });
 
   it('needs a real track, and refuses oversized bodies', async () => {

@@ -372,11 +372,7 @@ function onLive(event: LiveEvent): void {
 
     case 'error':
       if (event.code === 'bad_nonce') live!.resume();
-      else if (event.code === 'duplicate_run') {
-        liveState = 'lost';
-        liveNote = 'Already on the board: you finished this exact run before.';
-        showVerification();
-      } else if (event.code === 'stale_track_version')
+      else if (event.code === 'stale_track_version')
         loseRun('This track was updated. Reload to race the new version.');
       else if (event.code === 'run_replaced') loseRun('You started a run in another tab, so this one won’t count.');
       else if (liveState === 'active') loseRun(`This run can’t be verified: ${event.message}`);

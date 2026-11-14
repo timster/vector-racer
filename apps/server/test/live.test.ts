@@ -44,6 +44,15 @@ describe('live runs over a WebSocket (Phase 3)', () => {
     live.close();
   });
 
+  it('accepts the same line raced twice, and closes the live run both times', async () => {
+    const p = await newPlayer(app);
+    for (let i = 0; i < 2; i++) {
+      expect(await liveRun(app, 'dogleg', BEST.dogleg, p.cookie)).toMatchObject({ type: 'finished', score: 8 });
+      expect((await db.query('SELECT count(*) FROM live_runs WHERE player_id = $1', [p.id])).rows[0].count).toBe(0);
+    }
+    expect((await db.query('SELECT count(*) FROM runs WHERE player_id = $1', [p.id])).rows[0].count).toBe(2);
+  });
+
   it('rejects a wrong, reused or missing nonce, and bad moves, without ending the run', async () => {
     const live = await connect(app, (await newPlayer(app)).cookie);
     const started = await live.request({ type: 'start_run', trackSlug: 'oval', trackVersion: 1 });

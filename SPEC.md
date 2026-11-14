@@ -118,7 +118,7 @@ Five Postgres tables cover everything through Phase 4. Store the full move list 
 | --- | --- | --- |
 | `users` | `id`, `display_name`, `oauth_provider`, `oauth_subject`, `is_guest`, `created_at`, `standing` | Accounts. `standing` is `good`, `pending` or `banned` |
 | `tracks` | `id`, `slug`, `version`, `rules_version`, `grid` (JSON), `max_turns`, `par` (nullable), `release_at`, `created_at` | Server-owned tracks. Never accept track data from clients |
-| `runs` | `id`, `user_id`, `track_id`, `track_version`, `sim_version`, `moves` (`smallint[]`), `score`, `move_hash`, `source` (`replay` or `live`), `created_at` | Validated runs. Unique on `(user_id, track_id, move_hash)` |
+| `runs` | `id`, `user_id`, `track_id`, `track_version`, `sim_version`, `moves` (`smallint[]`), `score`, `source` (`replay` or `live`), `created_at` | Validated runs. Repeats of the same move list are allowed |
 | `run_timings` | `run_id`, `move_times_ms` (`int[]`), `session_id` | Server-side per-move timestamps from live sessions (Phase 3) |
 | `flags` | `id`, `run_id`, `kind`, `detail` (JSON), `status`, `created_at` | Suspicious-run reports from heuristics or players (Phase 4) |
 
@@ -146,7 +146,7 @@ Acceptance: a person can finish all three tracks in the browser, and the same mo
 3. Add `GET /tracks` and `GET /tracks/:slug`. Tracks are loaded from the database by the server only.
 4. Add `POST /tracks/:slug/runs` with body `{ trackVersion, moves }`. The server loads the track, calls `replay`, rejects invalid runs with a clear reason, and stores `score` from the replay result.
 5. Add `GET /tracks/:slug/leaderboard?limit=50` (best run per user) and `GET /runs/:id` (returns the move list for ghost playback).
-6. Hash each move list (`move_hash`) and reject exact duplicates. Rate-limit submissions per account and per IP.
+6. Rate-limit submissions per account and per IP.
 7. In the client, add submit-on-finish, a leaderboard page, and ghost playback of a chosen run.
 
 Acceptance:

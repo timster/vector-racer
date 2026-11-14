@@ -1,6 +1,5 @@
 import { replay, RULES_V1, SIM_VERSION } from '@vector-racer/sim';
-import { isUniqueViolation, type Queryable } from './db/pool';
-import { sha256 } from './players';
+import type { Queryable } from './db/pool';
 import type { StoredTrack } from './tracks';
 
 export type SubmitResult =
@@ -27,27 +26,12 @@ export async function submitRun(
 
   // replay() accepted every move, so they are all integers 0..8.
   const valid = moves as number[];
-  try {
-    const { rows } = await db.query<{ id: number }>(
-      `INSERT INTO runs (player_id, track_id, track_version, sim_version, rules_version, moves, score, move_hash, source)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-      [
-        playerId,
-        track.id,
-        track.version,
-        SIM_VERSION,
-        RULES_V1.rulesVersion,
-        valid,
-        result.score,
-        sha256(Buffer.from(valid)),
-        source,
-      ],
-    );
-    return { ok: true, runId: rows[0]!.id, score: result.score! };
-  } catch (err) {
-    if (isUniqueViolation(err, 'runs_unique_moves')) return { ok: false, status: 409, error: 'duplicate_run' };
-    throw err;
-  }
+  const { rows } = await db.query<{ id: number }>(
+    `INSERT INTO runs (player_id, track_id, track_version, sim_version, rules_version, moves, score, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [playerId, track.id, track.version, SIM_VERSION, RULES_V1.rulesVersion, valid, result.score, source],
+  );
+  return { ok: true, runId: rows[0]!.id, score: result.score! };
 }
 
 export interface LeaderboardEntry {

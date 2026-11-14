@@ -28,8 +28,3 @@ export async function withTransaction<T>(db: Db, fn: (client: pg.PoolClient) => 
     client.release();
   }
 }
-
-export function isUniqueViolation(err: unknown, constraint?: string): boolean {
-  const e = err as { code?: string; constraint?: string };
-  return e?.code === '23505' && (constraint === undefined || e.constraint === constraint);
-}

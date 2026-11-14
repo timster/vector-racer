@@ -71,9 +71,7 @@ export async function trackRoutes(app: FastifyInstance): Promise<void> {
         const message =
           result.error === 'stale_track_version'
             ? `This run is for an old version of ${track.name}; the current one is version ${track.version}`
-            : result.error === 'duplicate_run'
-              ? 'You already submitted this exact run'
-              : `Run rejected: ${result.reason}`;
+            : `Run rejected: ${result.reason}`;
         const { ok: _ok, status, ...body } = result;
         return reply.code(status).send({ ...body, message });
       }
